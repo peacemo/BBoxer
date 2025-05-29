@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -9,25 +12,49 @@ using System.Windows.Shapes;
 using Microsoft.Win32;
 using System.Text.Json;
 using System.IO;
+using Wpf.Ui.Appearance;
 
 namespace BBoxer
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : INotifyPropertyChanged
     {
+        // 添加 PropertyChanged 事件
+        public event PropertyChangedEventHandler PropertyChanged;
+        // 将私有字段 _rectangles 转换为可绑定的公共属性
+        private ObservableCollection<Rectangle> _rectangles = new ObservableCollection<Rectangle>();
+        public ObservableCollection<Rectangle> Rectangles
+        {
+            get => _rectangles;
+            set
+            {
+                _rectangles = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Rectangles)));
+            }
+        }
+
+        // 添加用于通知属性更改的辅助方法
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         private ImageSource _image;
         private Line _cursorCross;
         private Rectangle _rectangleMask;
         private Point _startPoint;
         private bool _isDrawing;
-        private List<Rectangle> _rectangles = new List<Rectangle>();
+        //private List<Rectangle> _rectangles = new List<Rectangle>();
         private double _scale = 1.0;
 
         public MainWindow()
         {
             InitializeComponent();
+            ApplicationThemeManager.Apply(this);
+            DataContext = this; // 设置数据上下文以支持数据绑定
+            Rectangles = new ObservableCollection<Rectangle>();  // 初始化集合
             imageCanvas.MouseWheel += ImageCanvas_MouseWheel;
         }
 
@@ -56,10 +83,12 @@ namespace BBoxer
             if (openFileDialog.ShowDialog() == true)
             {
                 _image = new BitmapImage(new Uri(openFileDialog.FileName));
+                imageCanvas.Children.Clear(); // 清除之前的内容
+                Rectangles.Clear(); // 清除之前的矩形
                 imageCanvas.Width = _image.Width;
                 imageCanvas.Height = _image.Height;
                 imageCanvas.Background = new ImageBrush(_image);
-                chooseImageButton.Visibility = Visibility.Collapsed;
+                // chooseImageButton.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -101,8 +130,7 @@ namespace BBoxer
                 _isDrawing = false;
                 if (_rectangleMask != null)
                 {
-                    _rectangles.Add(_rectangleMask);
-                    UpdateInfoText();
+                    Rectangles.Add(_rectangleMask);
                 }
             }
         }
@@ -150,24 +178,9 @@ namespace BBoxer
             _rectangleMask.Height = height;
         }
 
-        private void UpdateInfoText()
-        {
-            string info = "";
-            for (int i = 0; i < _rectangles.Count; i++)
-            {
-                var rect = _rectangles[i];
-                double left = Canvas.GetLeft(rect);
-                double top = Canvas.GetTop(rect);
-                double width = rect.Width;
-                double height = rect.Height;
-                info += $"Rectangle {i + 1}: Left={left:F2}, Top={top:F2}, Width={width:F2}, Height={height:F2}\n";
-            }
-            infoTextBlock.Text = info;
-        }
-
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_rectangles.Count == 0)
+            if (Rectangles.Count == 0)
             {
                 MessageBox.Show("No rectangles to save.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
@@ -184,7 +197,7 @@ namespace BBoxer
             {
                 try
                 {
-                    var rectangles = _rectangles.Select(rect => new
+                    var rectangles = Rectangles.Select(rect => new
                     {
                         x = (int)Canvas.GetLeft(rect),
                         y = (int)Canvas.GetTop(rect),
